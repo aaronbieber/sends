@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -19,9 +20,11 @@ type Send struct {
 	Color string
 	Grade string
 	Meta  string
+	Date  string
 }
 
 type Frontmatter struct {
+	Date  string   `yaml:"date"`
 	Sends []string `yaml:"sends"`
 }
 
@@ -141,17 +144,21 @@ func main() {
 	// CLI flags - define both short and long forms
 	var contentType string
 	var countMode bool
+	var datesGrade string
 
 	flag.StringVar(&contentType, "t", "posts", "content type to parse")
 	flag.StringVar(&contentType, "type", "posts", "content type to parse")
 	flag.BoolVar(&countMode, "c", false, "output counts instead of list")
 	flag.BoolVar(&countMode, "count", false, "output counts instead of list")
+	flag.StringVar(&datesGrade, "d", "", "output unique dates for posts with this grade")
+	flag.StringVar(&datesGrade, "dates", "", "output unique dates for posts with this grade")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: sends [options] <hugo-site-path>\n")
 		fmt.Fprintf(os.Stderr, "\nOptions:\n")
 		fmt.Fprintf(os.Stderr, "  -t, --type string   content type to parse (default \"posts\")\n")
 		fmt.Fprintf(os.Stderr, "  -c, --count         output counts instead of list\n")
+		fmt.Fprintf(os.Stderr, "  -d, --dates string  output unique dates for posts with this grade\n")
 	}
 
 	flag.Parse()
@@ -196,6 +203,7 @@ func main() {
 						Color: matches[1],
 						Grade: matches[2],
 						Meta:  matches[3],
+						Date:  fm.Date,
 					})
 				}
 			}
@@ -219,7 +227,37 @@ func main() {
 		return sends[i].Color < sends[j].Color
 	})
 
-	if countMode {
+	if datesGrade != "" {
+		// Dates mode: filter by grade and output unique dates chronologically
+		dateMap := make(map[string]bool)
+		var dates []string
+
+		// Collect unique dates for the specified grade
+		for _, send := range sends {
+			if send.Grade == datesGrade && send.Date != "" {
+				if !dateMap[send.Date] {
+					dateMap[send.Date] = true
+					dates = append(dates, send.Date)
+				}
+			}
+		}
+
+		// Sort dates chronologically
+		sort.Slice(dates, func(i, j int) bool {
+			ti, erri := time.Parse("2006-01-02", dates[i])
+			tj, errj := time.Parse("2006-01-02", dates[j])
+			// If parsing fails, fall back to string comparison
+			if erri != nil || errj != nil {
+				return dates[i] < dates[j]
+			}
+			return ti.Before(tj)
+		})
+
+		// Output dates in ISO format (YYYY-MM-DD)
+		for _, date := range dates {
+			fmt.Println(date)
+		}
+	} else if countMode {
 		// Count mode: group by grade and count
 		counts := make(map[string]int)
 		var gradeOrder []string
